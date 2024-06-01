@@ -1,3 +1,4 @@
+import email
 import json
 import os
 import hashlib
@@ -8,15 +9,28 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 from rich import print
+import logging
+import re
 
-#Enum for Priority
+def validate_email(email):
+    pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+    if re.match(pattern, email):
+        return True
+    else:
+        return False
+
+# Configure logging
+logging.basicConfig(filename='project_log.log', level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+# enum for Priority
 class Priority(Enum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
     LOW = "LOW"
 
-#Enum for Status
+# enum for Status
 class Status(Enum):
     BACKLOG = "BACKLOG"
     TODO = "TODO"
@@ -24,7 +38,6 @@ class Status(Enum):
     DONE = "DONE"
     ARCHIVED = "ARCHIVED"
 
-#User class
 class User:
     def __init__(self, U, P, E):
         self._username = U
@@ -32,7 +45,6 @@ class User:
         self._emailaddress = E
         self._active = True
 
-    #Getter function
     def get_username(self):
         return self._username
 
@@ -45,7 +57,6 @@ class User:
     def is_active(self):
         return self._active
 
-    #Setter function
     def set_username(self, U):
         self._username = U
 
@@ -57,7 +68,6 @@ class User:
 
     def set_active(self, A):
         self._active = A
-
 
     def login(self, U, P):
         return self._username == U and self._password == hashed_password(P)
@@ -85,7 +95,6 @@ class Duty:
         self._Assignees = assignees
         self._AssignedTo = assigned_to
 
-    #Getter function 
     def get_ID(self):
         return self._ID
 
@@ -113,7 +122,6 @@ class Duty:
     def get_assigned_to(self):
         return self._AssignedTo
 
-    #Setter function
     def set_ID(self, Id):
         self._ID = Id
 
@@ -157,7 +165,6 @@ class Project:
         self._Members = members
         self._Duties = duties
 
-    #Getter function 
     def get_id(self):
         return self._ID
 
@@ -173,7 +180,6 @@ class Project:
     def get_duties(self):
         return self._Duties
 
-    #Setter function
     def set_ID(self, Id):
         self._ID = Id
 
@@ -189,50 +195,52 @@ class Project:
     def set_duties(self, duties: List[Duty]):
         self._Duties = duties
 
-    #Function to create duty
-    def AddDuty(self, Id, title: str, detail: str, assignees: List[User]):
-        NewDuty = Duty(Id, title, detail, assignees)
-        self._Duties.append(NewDuty)
-        return NewDuty
+    def add_duty(self, Id, title: str, detail: str, assignees: List[User]):
+        new_duty = Duty(Id, title, detail, assignees)
+        self._Duties.append(new_duty)
+        logging.info(f"Duty '{title}' added to project '{self._Title}'.")
+        return new_duty
 
-    #Function to add member to a duty
-    def AddMember(self, user: User):
+    def add_member(self, user: User):
         if user not in self._Members:
             self._Members.append(user)
+            logging.info(f"User '{user.get_username()}' added to project '{self._Title}'.")
 
-    #Function to remove member from a duty
-    def RemoveMember(self, user: User):
+    def remove_member(self, user: User):
         if user in self._Members:
             self._Members.remove(user)
+        logging.info(f"User '{user.get_username()}' removed from project '{self._Title}'.")
 
-    #Function to delete a project
-    def DeleteProject(self):
+    def delete_project(self):
+        logging.info(f"Project '{self._Title}' deleted.")
         pass
 
-    #Function to assign a duty to a member
-    def AssignDuty(self, duty_id, username):
+    def assign_duty(self, duty_id, username):
         for duty in self._Duties:
             if duty.get_ID() == duty_id:
                 assignee = next((member for member in self._Members if member.get_username() == username), None)
                 if assignee:
                     duty.set_assigned_to(assignee)
+                    logging.info(f"Duty '{duty.get_title()}' assigned to '{username}' in project '{self._Title}'.")
                     print(f"[green]Duty '{duty.get_title()}' assigned to '{username}' successfully.[/green]")
                 else:
+                    logging.error(f"Error! User '{username}' is not a member of the project '{self._Title}'.")
                     print(f"[red]Error! User '{username}' is not a member of this project.[/red]")
                 return
+            logging.error(f"Error! Duty with ID '{duty_id}' not found in project '{self._Title}'.")
         print(f"[red]Error! Duty with ID '{duty_id}' not found.[/red]")
 
-    #Function to not assign a duty from a member
-    def unAssignDuty(self, duty_id):
+    def unassign_duty(self, duty_id):
         for duty in self._Duties:
             if duty.get_ID() == duty_id:
                 duty.set_assigned_to(None)
+                logging.info(f"Duty '{duty.get_title()}' unassigned in project '{self._Title}'.")
                 print(f"[green]Duty '{duty.get_title()}' unassigned successfully.[/green]")
                 return
+            logging.error(f"Error! Duty with ID '{duty_id}' not found in project '{self._Title}'.")
         print(f"[red]Error! Duty with ID '{duty_id}' not found.[/red]")
 
-    #Function to display duties
-    def PrintDuties(self):
+    def print_duties(self):
         console = Console()
         table = Table(title="Project Duties")
 
@@ -253,36 +261,34 @@ class Project:
 
         console.print(table)
 
-#Reading from the file users.json 
 def LoadUsers(file_path='users.json'):
     if os.path.exists(file_path):
         with open(file_path, 'r') as file:
-            return json.load(file)
+            users = json.load(file)
+            for user in users:
+                if 'role' not in user:
+                    user['role'] = ''
+            return users
     return []
 
-#Writing in the file users.json
 def SaveUsers(users, file_path='users.json'):
     with open(file_path, 'w') as file:
         json.dump(users, file, indent=4)
 
-#Reading from the file projects.json 
 def LoadProjects(file_path='projects.json'):
     if os.path.exists(file_path):
         with open(file_path, 'r') as file:
             return json.load(file)
     return []
 
-#Writing in the file projects.json
 def SaveProjects(projects, file_path='projects.json'):
     with open(file_path, 'w') as file:
         json.dump(projects, file, indent=4)
 
-#Password encryption
 def hashed_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-#Creating a new account by the user
-def CreateAccount(username, emailaddress, password):
+def create_an_account(username, emailaddress, password):
     users = LoadUsers()
     for user in users:
         if user['username'] == username or user['emailaddress'] == emailaddress:
@@ -293,9 +299,9 @@ def CreateAccount(username, emailaddress, password):
     users.append(new_user)
     SaveUsers(users)
     print("[green]Account created successfully![/green]")
+    logging.info(f"Account created for user '{username}'.")
 
-#Login to account
-def Login(username, password):
+def login_user(username, password):
     users = LoadUsers()
     for user in users:
         if user['username'] == username:
@@ -308,51 +314,174 @@ def Login(username, password):
     print("[red]Error! Invalid username or password.[/red]")
     return None
 
-#Creating a new project by the user
-def CreateProject(ID, Title, Leader):
+def create_project(ID, Title,username):
     projects = LoadProjects()
     for project in projects:
         if project['ID'] == ID:
             print("[red]Error! Project ID already exists.[/red]")
             return
+    users = LoadUsers()
+    for user in users:
+        if user['username'] == username:
+            leader = User(user['username'], user['password'], user['emailaddress'])
+            new_project = {'ID': ID, 'Title': Title, 'Leader': username, 'Members': [username], 'Duties': []}
+            projects.append(new_project)
+            SaveProjects(projects)
+            print("[green]Project created successfully![/green]")
+            return
 
-    new_project = Project(ID, Title,Leader)
-    projects.append({
-        'ID': new_project.get_id(),
-        'Title': new_project.get_T(),
-        'Leader': Leader,
-        'Members': [member.to_dict() for member in new_project.get_members()],
-        'Duties': []
-    })
-    SaveProjects(projects)
-    print("[green]Project created successfully![/green]")
+    print("[red]Error! Leader not found.[/red]")
 
-#Function to determine the project leader
-def IsProjectLeader(project_id, username):
-    projects = LoadProjects()
-    for project in projects:
-        if project['ID'] == project_id:
-            return project['Leader'] == username
-    return False
-
-#To add a member to a project
-def AddMember_to_project(project_id, username, current_user):
-    if not IsProjectLeader(project_id, current_user):
-        print("Error! You are not the leader of this project.")
-        return
-
+def create_a_new_project(title, leader):
     projects = LoadProjects()
     users = LoadUsers()
-    user_to_add = next((u for u in users if u['username'] == username), None)
 
+    project_id = str(len(projects) + 1)
+    leader_obj = next((user for user in users if user['username'] == leader), None)
+    if not leader_obj:
+        print("[red]Error! Leader username not found.[/red]")
+        logging.error(f"Error! Leader username '{leader}' not found.")
+        return
+
+    new_project = {
+        'ID': project_id,
+        'Title': title,
+        'Leader': leader,
+        'Members': [],
+        'Duties': []
+    }
+    projects.append(new_project)
+    SaveProjects(projects)
+    print("[green]Project created successfully![/green]")
+    logging.info(f"Project '{title}' created with leader '{leader}'.")
+
+def print_projects():
+    projects = LoadProjects()
+    console = Console()
+    table = Table(title="Projects")
+
+    table.add_column("ID", justify="center", style="cyan", no_wrap=True)
+    table.add_column("Title", style="magenta")
+    table.add_column("Leader", style="green")
+    table.add_column("Members", style="yellow")
+
+    for project in projects:
+        member_names = ", ".join([member['username'] for member in project['Members']])
+        table.add_row(
+            project['ID'],
+            project['Title'],
+            project['Leader']['username'],
+            member_names
+        )
+
+    console.print(table)
+
+def create_duty(project_id, duty_id, title, detail, assignees_usernames):
+    projects = LoadProjects()
+    users = LoadUsers()
+
+    project = next((proj for proj in projects if proj['ID'] == project_id), None)
+    if not project:
+        print(f"[red]Error! Project with ID '{project_id}' not found.[/red]")
+        return
+
+    assignees = [User(user['username'], user['password'], user['emailaddress']) for user in users if user['username'] in assignees_usernames]
+
+    if len(assignees) != len(assignees_usernames):
+        print("[red]Error! One or more assignees not found.[/red]")
+        return
+
+    if any(duty['ID'] == duty_id for duty in project['Duties']):
+        print(f"[red]Error! Duty with ID '{duty_id}' already exists in project '{project_id}'.[/red]")
+        return
+
+    new_duty = Duty(duty_id, title, detail, assignees)
+    project['Duties'].append({
+        'ID': new_duty.get_ID(),
+        'Title': new_duty.get_title(),
+        'Detail': new_duty.get_detail(),
+        'StartTime': new_duty.get_st().strftime("%Y-%m-%d %H:%M:%S"),
+        'FinishTime': new_duty.get_ft().strftime("%Y-%m-%d %H:%M:%S"),
+        'Priority': new_duty.get_priority().value,
+        'Status': new_duty.get_status().value,
+        'Assignees': [assignee.to_dict() for assignee in new_duty.get_assignees()],
+        'AssignedTo': new_duty.get_assigned_to().to_dict() if new_duty.get_assigned_to() else None
+    })
+    SaveProjects(projects)
+    print("[green]Duty created successfully![/green]")
+
+def list_projects():
+    projects = LoadProjects()
+    console = Console()
+    table = Table(title="Projects List")
+
+    table.add_column("ID", justify="center", style="cyan", no_wrap=True)
+    table.add_column("Title", style="magenta")
+    table.add_column("Leader", style="green")
+
+    for project in projects:
+        table.add_row(project['ID'], project['Title'], project['Leader'])
+
+    console.print(table)
+
+def list_users():
+    users = LoadUsers()
+    console = Console()
+    table = Table(title="Users List")
+
+    table.add_column("Username", style="cyan")
+    table.add_column("Email Address", style="magenta")
+    table.add_column("Role", style="green")
+
+    for user in users:
+        table.add_row(user['username'], user['emailaddress'], user['role'])
+
+    console.print(table)
+
+#To add a member to a project
+def add_member_to_project(project_id, username):
+    projects = LoadProjects()
+    users = LoadUsers()
+   
+    for project in projects:
+        if project['ID'] == project_id:
+            user_to_add = next((u for u in users if u['username'] == username), None)
+            if not user_to_add:
+                print(f"Error User '{username}' not found.")
+                return
+            if username in [member['username'] for member in project['Members']]:
+                print("[red]Error User is already a member of this project.[/red]")
+                return
+            project['Members'].append(username)
+            SaveProjects(projects)
+            print(f"Member {username} added to project {project_id}.")
+            return
+    print(f"Error Project with ID '{project_id}' not found.")
+    user_to_add = next((u for u in users if u['username'] == username), None)
+    if not project:
+        print("[red]Error! Project ID not found.[/red]")
+        logging.error(f"Error! Project ID '{project_id}' not found.")
+        return
+    
     if not user_to_add:
         print(f"Error! User '{username}' not found.")
+        logging.error(f"Error! Username '{username}' not found.")
         return
+    if username in project['Members']:
+        print("[red]Error! User is already a member of this project.[/red]")
+        logging.error(f"Error! User '{username}' is already a member of project '{project['Title']}'.")
+        return
+
+    project['members'].append(username)
+    print(f"Member {username} added to project {project_id}.")
+    SaveProjects(projects)
+    print("[green]Member added to project successfully![/green]")
+    logging.info(f"User '{username}' added to project '{project['Title']}'.")
 
     for project in projects:
         if project['ID'] == project_id:
             if any(member['username'] == username for member in project['Members']):
-                print(f"Error! User '{username}' is already a member of the project.")
+                print(f"[bold white]Error! User '{username}' is already a member of the project![/bold white]")
                 return
             project['Members'].append(user_to_add)
             SaveProjects(projects)
@@ -362,117 +491,220 @@ def AddMember_to_project(project_id, username, current_user):
     print(f"Error! Project with ID '{project_id}' not found.")
 
 #To remove a member from a project
-def RemoveMember_from_project(project_id, username, current_user):
-    if not IsProjectLeader(project_id, current_user):
-        print("Error! You are not the leader of this project.")
+def remove_member_from_project(project_id, username):
+    projects = LoadProjects()
+    project = next((proj for proj in projects if proj['ID'] == project_id), None)
+
+    if not project:
+        print("[red]Error! Project ID not found.[/red]")
+        logging.error(f"Error! Project ID '{project_id}' not found.")
         return
 
-    projects = LoadProjects()
+    if username not in project['Members']:
+        print("[red]Error! User is not a member of this project.[/red]")
+        logging.error(f"Error! User '{username}' is not a member of project '{project['Title']}'.")
+        return
 
-    for project in projects:
-        if project['ID'] == project_id:
-            project['Members'] = [m for m in project['Members'] if m['username'] != username]
-            SaveProjects(projects)
-            print(f"User '{username}' removed from project '{project['Title']}' successfully.")
+    project['Members'].remove(username)
+    SaveProjects(projects)
+    print("[green]Member removed from project successfully![/green]")
+    logging.info(f"User '{username}' removed from project '{project['Title']}'.")
+
+def add_duty_to_project(project_id, duty_id, title, detail, assignees):
+    projects = LoadProjects()
+    users = LoadUsers()
+    project = next((proj for proj in projects if proj['ID'] == project_id), None)
+
+    if not project:
+        print("[red]Error! Project ID not found.[/red]")
+        logging.error(f"Error! Project ID '{project_id}' not found.")
+        return
+
+    for assignee in assignees:
+        if assignee not in project['Members']:
+            print(f"[red]Error! User '{assignee}' is not a member of this project.[/red]")
+            logging.error(f"Error! User '{assignee}' is not a member of project '{project['Title']}'.")
             return
 
-    print(f"Error! Project with ID '{project_id}' not found.")
+    new_duty = {
+        'ID': duty_id,
+        'Title': title,
+        'Detail': detail,
+        'Start Time': datetime.now().isoformat(),
+        'End Time': (datetime.now() + timedelta(hours=24)).isoformat(),
+        'Priority': 'LOW',
+        'Status': 'BACKLOG',
+        'Assignees': assignees,
+        'Assigned To': None
+    }
+    project['Duties'].append(new_duty)
+    SaveProjects(projects)
+    print("[green]Duty added to project successfully![/green]")
+    logging.info(f"Duty '{title}' added to project '{project['Title']}'.")
 
 #To delete a project
-def DeleteProject(project_id, current_user):
-    # if not IsProjectLeader(project_id, current_user):
-    #     print("Error! You are not the leader of this project.")
-    #     return
-
+def delete_project(project_id, username):
     projects = LoadProjects()
 
     for project in projects:
         if project['ID'] == project_id:
-            # if project['Leader'] != current_user.get_username():
-            
-            if not IsProjectLeader(project_id, current_user):
-                print(f"Error! Only the leader can delete the project.")
+            if project['Leader'] !=username:
+                print(f"[red]Error! Only the leader can delete the project.[/red]")
                 return
-            
             projects.remove(project)
             SaveProjects(projects)
-            
-            print(f"Project with ID '{project_id}' deleted successfully.")
+            print(f"[green]Project with ID '{project_id}' deleted successfully.[/green]")
             return
+    print(f"[red]Error! Project with ID '{project_id}' not found.[/red]")
 
-    print(f"Error! Project with ID '{project_id}' not found.")
-
-#To assign a duty to a member
-def AssignDuty_to_member(project_id, duty_id, username, current_user):
-    if not IsProjectLeader(project_id, current_user):
-        print("Error! You are not the leader of this project.")
-        return
-
+# To assign a duty to a member
+def assign_duty_to_member(project_id, duty_id, username):
     projects = LoadProjects()
 
     for project in projects:
         if project['ID'] == project_id:
-            project_instance = Project(
-                project['ID'],
-                project['Title'],
-                User(project['Leader'], '', ''),
-                [Duty(d['ID'], d['Title'], d['Detail'], d['Assignees'], d['AssignedTo']) for d in project['Duties']],
-                [User(m['username'], m['password'], m['role']) for m in project['Members']]
-            )
-            project_instance.AssignDuty(duty_id, username)
-            project['Duties'] = [duty.__dict__ for duty in project_instance.get_duties()]
+            leader = User(project['Leader'], '', '')  # Assuming leader does not need a role
+
+            # Create Project instance with proper User and Duty objects
+            members = [User(m['username'], '', '') for m in project['Members']]
+            duties = [
+                Duty(
+                    d['ID'],
+                    d['Title'],
+                    d['Detail'],
+                    [User(a['username'], '', '') for a in d['Assignees']],
+                    User(d['AssignedTo']['username'], '', '') if d['AssignedTo'] else None
+                ) for d in project['Duties']
+            ]
+
+            project_instance = Project(project['ID'], project['Title'], leader, members, duties)
+
+            # Assign the duty to the user
+            project_instance.assign_duty(duty_id, username)
+            
+            # Update the project duties in the original data structure
+            project['Duties'] = [
+                {
+                    'ID': duty.get_ID(),
+                    'Title': duty.get_title(),
+                    'Detail': duty.get_detail(),
+                    'ST': duty.get_st().isoformat(),
+                    'FT': duty.get_ft().isoformat(),
+                    'Priority': duty.get_priority().value,
+                    'Status': duty.get_status().value,
+                    'Assignees': [{'username': user.get_username(), 'password': user.get_password(), 'emailaddress': user.get_emailaddress(), 'active': user.is_active()} for user in duty.get_assignees()],
+                    'AssignedTo': {'username': duty.get_assigned_to().get_username(), 'password': duty.get_assigned_to().get_password(), 'emailaddress': duty.get_assigned_to().get_emailaddress(), 'active': duty.get_assigned_to().is_active()} if duty.get_assigned_to() else None
+                } for duty in project_instance.get_duties()
+            ]
+            
             SaveProjects(projects)
             return
-
     print(f"Error! Project with ID '{project_id}' not found.")
 
 #To unassign a duty from a member
-def unAssignDuty_from_member(project_id, duty_id, current_user):
-    if not IsProjectLeader(project_id, current_user):
-        print("Error! You are not the leader of this project.")
-        return
-
+def unassign_duty_from_member(project_id, duty_id):
     projects = LoadProjects()
+
     for project in projects:
         if project['ID'] == project_id:
-            project_instance = Project(
-                project['ID'],
-                project['Title'],
-                User(project['Leader'], '', ''),
-                [Duty(d['ID'], d['Title'], d['Detail'], d['Assignees'], d['AssignedTo']) for d in project['Duties']],
-                [User(m['username'], m['password'], m['role']) for m in project['Members']]
-            )
-            project_instance.unAssignDuty(duty_id)
-            project['Duties'] = [duty.__dict__ for duty in project_instance.get_duties()]
-            SaveProjects(projects)
-            return
-
-    print(f"Error! Project with ID '{project_id}' not found.")
+            for duty in project['Duties']:
+                if duty['ID'] == duty_id:
+                    duty['AssignedTo'] = None
+                    SaveProjects(projects)
+                    print(f"[green]Duty '{duty_id}' unassigned successfully.[/green]")
+                    return
+    print(f"[red]Error! Project with ID '{project_id}' or duty with ID '{duty_id}' not found.[/red]")
 
 #New function to list duties of a project for a member
-def ListProjectDuties(user: User, project_id):
+def list_project_duties(project_id):
     projects = LoadProjects()
+    project = next((proj for proj in projects if proj['ID'] == project_id), None)
 
-    for project in projects:
-        if project['ID'] == project_id:
-            project_instance = Project(
-                project['ID'],
-                project['Title'],
-                User(project['Leader'], '', ''),
-                [Duty(d['ID'], d['Title'], d['Detail'], d['Assignees'], d['AssignedTo']) for d in project['Duties']],
-                [User(m['username'], m['password'], m['role']) for m in project['Members']]
-            )
-            if user.get_username() in [m.get_username() for m in project_instance.get_members()]:
-                project_instance.PrintDuties()
-                return
-            else:
-                print(f"Error! User '{user.get_username()}' is not a member of this project.")
-                return
+    if not project:
+        print("[red]Error! Project ID not found.[/red]")
+        logging.error(f"Error! Project ID '{project_id}' not found.")
+        return
 
-    print(f"Error! Project with ID '{project_id}' not found.")
+    console = Console()
+    table = Table(title=f"Project Duties - {project['Title']}")
+
+    table.add_column("ID", justify="center", style="cyan", no_wrap=True)
+    table.add_column("Title", style="magenta")
+    table.add_column("Detail", style="green")
+    table.add_column("Start Time", justify="center", style="yellow")
+    table.add_column("End Time", justify="center", style="yellow")
+    table.add_column("Status", justify="center", style="red")
+    table.add_column("Priority", justify="center", style="red")
+
+    for duty in project['Duties']:
+        table.add_row(
+            duty['ID'],
+            duty['Title'],
+            duty['Detail'],
+            duty['Start Time'],
+            duty['End Time'],
+            duty['Status'],
+            duty['Priority']
+        )
+
+    console.print(table)
+
+def assign_duty_to_user(project_id, duty_id, username):
+    projects = LoadProjects()
+    users = LoadUsers()
+    project = next((proj for proj in projects if proj['ID'] == project_id), None)
+    user = next((usr for usr in users if usr['username'] == username), None)
+
+    if not project:
+        print("[red]Error! Project ID not found.[/red]")
+        logging.error(f"Error! Project ID '{project_id}' not found.")
+        return
+
+    if not user:
+        print("[red]Error! Username not found.[/red]")
+        logging.error(f"Error! Username '{username}' not found.")
+        return
+
+    duty = next((dty for dty in project['Duties'] if dty['ID'] == duty_id), None)
+
+    if not duty:
+        print("[red]Error! Duty ID not found.[/red]")
+        logging.error(f"Error! Duty ID '{duty_id}' not found in project '{project['Title']}'.")
+        return
+
+    if username not in project['Members']:
+        print(f"[red]Error! User '{username}' is not a member of this project.[/red]")
+        logging.error(f"Error! User '{username}' is not a member of project '{project['Title']}'.")
+        return
+
+    duty['Assigned To'] = username
+    SaveProjects(projects)
+    print("[green]Duty assigned to user successfully![/green]")
+    logging.info(f"Duty '{duty['Title']}' assigned to user '{username}' in project '{project['Title']}'.")
+
+def unassign_duty_from_user(project_id, duty_id):
+    projects = LoadProjects()
+    project = next((proj for proj in projects if proj['ID'] == project_id), None)
+
+    if not project:
+        print("[red]Error! Project ID not found.[/red]")
+        logging.error(f"Error! Project ID '{project_id}' not found.")
+        return
+
+    duty = next((dty for dty in project['Duties'] if dty['ID'] == duty_id), None)
+
+    if not duty:
+        print("[red]Error! Duty ID not found.[/red]")
+        logging.error(f"Error! Duty ID '{duty_id}' not found in project '{project['Title']}'.")
+        return
+
+    duty['Assigned To'] = None
+    SaveProjects(projects)
+    print("[green]Duty unassigned successfully![/green]")
+    logging.info(f"Duty '{duty['Title']}' unassigned in project '{project['Title']}'.")
 
 #New function to update duty details by a member
-def UpdateDutyDetails(user: User, project_id, duty_id, **kwargs):
+def update_duty_details(user: User, project_id, duty_id, **kwargs):
     projects = LoadProjects()
 
     for project in projects:
@@ -532,7 +764,7 @@ def UpdateDutyDetails(user: User, project_id, duty_id, **kwargs):
     print(f"Error! Project with ID '{project_id}' not found.")
 
 #To view the list of projects
-def ListUserProjects(user: User):
+def list_user_projects(user: User):
     projects = LoadProjects()
     leader_projects = []
     member_projects = []
@@ -540,121 +772,196 @@ def ListUserProjects(user: User):
     for project_data in projects:
         leader = project_data['Leader']
         if leader == user.get_username():
-            leader_projects.append((project_data['Title'], project_data['ID']))
+            leader_projects.append(project_data['Title'])
         else:
-            for member in project_data['Members']:
-                if member['username'] == user.get_username():
-                    member_projects.append((project_data['Title'], project_data['ID']))
-                    break
+            for duty in project_data['Duties']:
+                for assignee in duty['Assignees']:
+                    if assignee['username'] == user.get_username():
+                        member_projects.append(project_data['Title'])
+                        break
 
-    print(f"Projects that you lead:")
-    for title, ID in leader_projects:
-        print(f" - ID: {ID}, Title: {title}")
+    print(f"Projects led by {user.get_username()}: {leader_projects}")
 
-    print(f"Projects that you are a member of:")
-    for title, ID in member_projects:
-        print(f" - ID: {ID}, Title: {title}")
+# To create Duty
+def create_duty_in_project(project_id, duty_id, title, detail, assignees_usernames):
+    projects = LoadProjects()
+    users = LoadUsers()
+
+    project = next((proj for proj in projects if proj['ID'] == project_id), None)
+    if not project:
+        print(f"[red]Error! Project with ID '{project_id}' not found.[/red]")
+        return
+
+    assignees = [User(user['username'], user['password'], user['emailaddress']) for user in users if user['username'] in assignees_usernames]
+
+    if len(assignees) != len(assignees_usernames):
+        print("[red]Error! One or more assignees not found.[/red]")
+        return
+
+    if any(duty['ID'] == duty_id for duty in project['Duties']):
+        print(f"[red]Error! Duty with ID '{duty_id}' already exists in project '{project_id}'.[/red]")
+        return
+
+    new_duty = Duty(duty_id, title, detail, assignees)
+    project['Duties'].append({
+        'ID': new_duty.get_ID(),
+        'Title': new_duty.get_title(),
+        'Detail': new_duty.get_detail(),
+        'StartTime': new_duty.get_st().strftime("%Y-%m-%d %H:%M:%S"),
+        'FinishTime': new_duty.get_ft().strftime("%Y-%m-%d %H:%M:%S"),
+        'Priority': new_duty.get_priority().value,
+        'Status': new_duty.get_status().value,
+        'Assignees': [assignee.to_dict() for assignee in new_duty.get_assignees()],
+        'AssignedTo': new_duty.get_assigned_to().to_dict() if new_duty.get_assigned_to() else None
+    })
+    SaveProjects(projects)
+    print("[green]Duty created successfully![/green]")
 
 def user_menu():
     console = Console()
+    console.print("[bold white]Welcome to the Project Management System![/bold white]")
     console.print("[bold magenta]--- Menu ---[/bold magenta]")
     console.print("1. Create an account")
     console.print("2. Log in")
     console.print("3. Exit")
 
-    choice = input("Enter your choice: ")
-    return choice
-
-def dashboard():
-    console = Console()
-    console.print("[bold magenta]--- Dashboard ---[/bold magenta]")
-    console.print("1. Create project")
-    console.print("2. List of your projects")
-    console.print("3. Enter project menu")
-    console.print("4. Exit")
-
-    choice = input("Enter your choice: ")
-    return choice
+    name = Prompt.ask("[bold yellow]Enter your choice[/bold yellow]")
+    return name
 
 def project_menu():
     console = Console()
     console.print("[bold magenta]--- Project Menu ---[/bold magenta]")
+    console.print("1. Create project")
+    console.print("2. List my projects")
+    console.print("3. Exit")
+
+    name = Prompt.ask("[bold yellow]Enter your choice[/bold yellow]")
+    return name
+
+def project_information():
+    console = Console()
+    console.print("[bold magenta]--- Project Information ---[/bold magenta]")
     console.print("1. Add member")
     console.print("2. Delete member")
-    console.print("3. Assignment of duties")
-    console.print("4. Unassignment of duties")
-    console.print("5. Delete Project")
-    console.print("6. Exit")
+    console.print("3. Create duty")
+    console.print("4. Assignment of duties")
+    console.print("5. Unassignment of duties")
+    console.print("6. Update duty details")
+    console.print("7. Delete Project")
+    console.print("8. Exit")
 
-    choice = input("Enter your choice: ")
-    return choice
+    name = Prompt.ask("[bold yellow]Enter your choice[/bold yellow]")
+    return name
 
 def main():
     while True:
-        choice = user_menu()
-        if choice == '1':
-            username = Prompt.ask("Enter [bold yellow]username[/bold yellow]: ")
-            email = input("Enter email: ")
+        name = user_menu()
+        if name == '1':
+            username = Prompt.ask("Enter username: ")
+            while True:
+                email = input("Enter email: ")
+                if validate_email(email):
+                    print("[bold green]Email is valid.[/bold green]")
+                    break
+                else:
+                    print("[red]Email is not valid.[/red]")
             password = input("Enter password: ")
-            CreateAccount(username, email, password)
-        elif choice == '2':
+            create_an_account(username, email, password)
+        elif name == '2':
             username = input("Enter username: ")
             password = input("Enter password: ")
-            logged_in_user = Login(username, password)
+            logged_in_user = login_user(username, password)
             if logged_in_user:
-                print(f"Welcome, {logged_in_user.get_username()}!")
+                print(f"[green]Welcome, {logged_in_user.get_username()}![/green]")
 
                 while True:
-                    choice2 = dashboard()
+                    choice2 = project_menu()
                     if choice2 == '1':
                         ID = input("Enter the project ID: ")
                         Title = input("Enter the title of the project: ")
-                        CreateProject(ID, Title, logged_in_user.get_username())
+                        create_project(ID, Title, username.get_username())
                     elif choice2 == '2':
-                        ListUserProjects(logged_in_user)
-
-                    elif choice2 == '3':
                         while True:
-                            choice3 = project_menu()
+                            choice3 = project_information()
                             if choice3 == '1':
                                 project_id = input("Enter the project ID: ")
-                                username = input("Enter username: ")
-                                AddMember_to_project(project_id, username, logged_in_user.get_username())
-
+                                member_username = input("Enter username: ")
+                                add_member_to_project(project_id, member_username)
                             elif choice3 == '2':
                                 project_id = input("Enter the project ID: ")
-                                username = input("Enter username: ")
-                                RemoveMember_from_project(project_id, username, logged_in_user.get_username())
-
+                                member_username = input("Enter username: ")
+                                remove_member_from_project(project_id, member_username)
                             elif choice3 == '3':
                                 project_id = input("Enter the project ID: ")
                                 duty_id = input("Enter the duty ID: ")
-                                username = input("Enter username: ")
-                                AssignDuty_to_member(project_id, duty_id, username, logged_in_user.get_username())
-
+                                title = input("Enter the title of the duty: ")
+                                detail = input("Enter the detail of the duty: ")
+                                assignees_usernames = input("Enter the usernames of assignees : ").split(',')
+                                create_duty_in_project(project_id, duty_id, title, detail, assignees_usernames)
                             elif choice3 == '4':
                                 project_id = input("Enter the project ID: ")
                                 duty_id = input("Enter the duty ID: ")
-                                unAssignDuty_from_member(project_id, duty_id, logged_in_user.get_username())
-
+                                assignee_username = input("Enter username: ")
+                                assign_duty_to_member(project_id, duty_id, assignee_username)
                             elif choice3 == '5':
                                 project_id = input("Enter the project ID: ")
-                                DeleteProject(project_id, logged_in_user.get_username())
-
+                                duty_id = input("Enter the duty ID: ")
+                                unassign_duty_from_member(project_id, duty_id)
                             elif choice3 == '6':
-                                print("Exiting the project menu.")
+                                project_id = input("Enter the project ID: ")
+                                duty_id = input("Enter the duty ID: ")
+
+                                update_fields = {}
+                                update_title = input("Enter new title (or leave blank to keep current): ")
+                                if update_title:
+                                    update_fields['title'] = update_title
+
+                                update_detail = input("Enter new detail (or leave blank to keep current): ")
+                                if update_detail:
+                                    update_fields['detail'] = update_detail
+
+                                update_st = input("Enter new start time (YYYY-MM-DD , HH:MM:SS) (or leave blank to keep current): ")
+                                if update_st:
+                                    update_fields['st'] = datetime.fromisoformat(update_st)
+
+                                update_ft = input("Enter new finish time (YYYY-MM-DD , HH:MM:SS) (or leave blank to keep current): ")
+                                if update_ft:
+                                    update_fields['ft'] = datetime.fromisoformat(update_ft)
+
+                                update_priority = input("Enter new priority (CRITICAL/HIGH/MEDIUM/LOW) (or leave blank to keep current): ")
+                                if update_priority:
+                                    update_fields['priority'] = Priority[update_priority.upper()]
+
+                                update_status = input("Enter new status (BACKLOG/TODO/DOING/DONE/ARCHIVED) (or leave blank to keep current): ")
+                                if update_status:
+                                    update_fields['status'] = Status[update_status.upper()]
+
+                                update_duty_details(logged_in_user, project_id, duty_id, **update_fields)
+                            elif choice3 == '7':
+                                project_id = input("Enter the project ID: ")
+                                delete_project(project_id, logged_in_user.get_username())
+                            elif choice3 == '8':
+                                print("[bold red]Exiting the program...[/bold red]")
                                 break
-                                
-                    elif choice2 == '4':
-                        print("Exiting the dashboard.")
+                            else:
+                                print("Please try between 1 to 8.")
+                    elif choice2 == '3':
+                        print("Exiting the project menu :)")
                         break
                     else:
-                        print("Invalid choice. Please try again.")
-        elif choice == '3':
-            print("Exiting the program.")
+                        print("Invalid choice! Please try again.")
+        elif name == '3':
+            print("[red]Exiting the program...   Goodbye[/red]")
             break
         else:
-            print("Invalid choice. Please try again.")
+            print("[bold red]Please choose between 1 to 3![/bold red]")
+
+def convert_to_isoformat(date_str):
+    try:
+        date_str = date_str.replace(' , ', 'T')  # Replace comma with 'T'
+        return datetime.fromisoformat(date_str)
+    except ValueError:
+        raise ValueError(f"Invalid isoformat string: '{date_str}'")
 
 if __name__ == "__main__":
     main()
